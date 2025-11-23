@@ -9,13 +9,13 @@ import com.ittaro.drug.ui.util.MessageUtil;
 
 import javax.swing.*;
 
-
 public class MainFrame extends JFrame {
     private DataManager dataManager;
     private Employee currentUser;
     private JTabbedPane tabbedPane;
     private MedicinePanel medicinePanel;
-    private SalePanel salePanel; // 👈 新增引用
+    private CustomerPanel customerPanel; // 👈 新增引用
+    private SalePanel salePanel;
 
     public MainFrame(DataManager dataManager, Employee user) {
         this.dataManager = dataManager;
@@ -29,7 +29,13 @@ public class MainFrame extends JFrame {
         }
     }
 
-    // 新增：供外部调用（虽然目前未用，但结构清晰）
+    // 👇 新增方法
+    public void refreshCustomerPanel() {
+        if (customerPanel != null) {
+            customerPanel.refreshTable();
+        }
+    }
+
     public void refreshSalePanel() {
         if (salePanel != null) {
             salePanel.refreshData();
@@ -61,11 +67,12 @@ public class MainFrame extends JFrame {
 
         tabbedPane = new JTabbedPane();
         medicinePanel = new MedicinePanel(dataManager);
-        salePanel = new SalePanel(dataManager, this); // 👈 创建并保存引用
+        customerPanel = new CustomerPanel(dataManager); // 👈 创建并保存
+        salePanel = new SalePanel(dataManager, this);
 
         tabbedPane.addTab("药品管理", medicinePanel);
-        tabbedPane.addTab("客户管理", new CustomerPanel(dataManager));
-        tabbedPane.addTab("销售管理", salePanel); // 使用已创建的实例
+        tabbedPane.addTab("客户管理", customerPanel); // 使用变量
+        tabbedPane.addTab("销售管理", salePanel);
 
         if (currentUser.getRole() == Employee.Role.ADMIN) {
             JMenuItem deleteItem = new JMenuItem("删除药品");
@@ -73,14 +80,15 @@ public class MainFrame extends JFrame {
             menu.add(deleteItem);
         }
 
-        // 监听 Tab 切换，按需刷新
         tabbedPane.addChangeListener(e -> {
             int selectedIndex = tabbedPane.getSelectedIndex();
             String title = tabbedPane.getTitleAt(selectedIndex);
             if ("药品管理".equals(title)) {
                 refreshMedicinePanel();
+            } else if ("客户管理".equals(title)) {
+                refreshCustomerPanel(); // 可选：进入客户页也刷新
             } else if ("销售管理".equals(title)) {
-                refreshSalePanel(); // 👈 关键：进入销售页时刷新客户和药品
+                refreshSalePanel();
             }
         });
 

@@ -24,15 +24,15 @@ public class SalePanel extends JPanel {
     private SaleManager saleManager;
     private MedicineManager medicineManager;
     private DataManager dataManager;
-    private MainFrame mainFrame; // 新增引用
+    private MainFrame mainFrame;
 
-    private DefaultListModel<String> medicineListModel;
+    // 👇 改为存储 Medicine 对象，而不是 String
+    private DefaultListModel<Medicine> medicineListModel;
     private DefaultListModel<SaleItem> cartModel;
     private JComboBox<Object> customerComboBox;
     private JTextField quantityField;
-    private JButton addToCartBtn, checkoutBtn; // 已移除 refreshMedicineBtn
+    private JButton addToCartBtn, checkoutBtn;
 
-    // 修改构造函数：接收 MainFrame
     public SalePanel(DataManager dataManager, MainFrame mainFrame) {
         this.dataManager = dataManager;
         this.mainFrame = mainFrame;
@@ -51,8 +51,26 @@ public class SalePanel extends JPanel {
 
         medicineListModel = new DefaultListModel<>();
         updateMedicineList();
-        JList<String> medicineList = new JList<>(medicineListModel);
+
+        JList<Medicine> medicineList = new JList<>(medicineListModel);
         medicineList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // 自定义渲染器：显示名称 + 库存
+        medicineList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof Medicine) {
+                    Medicine m = (Medicine) value;
+                    setText(m.getName() + " (库存: " + m.getStock() + ")");
+                } else {
+                    setText(value == null ? "" : value.toString());
+                }
+                return this;
+            }
+        });
+
         leftPanel.add(new JScrollPane(medicineList), BorderLayout.CENTER);
 
         // 右侧：购物车
@@ -61,16 +79,31 @@ public class SalePanel extends JPanel {
 
         cartModel = new DefaultListModel<>();
         JList<SaleItem> cartList = new JList<>(cartModel);
+        // 可选：为购物车项添加渲染器
+        cartList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof SaleItem) {
+                    SaleItem item = (SaleItem) value;
+                    Medicine med = dataManager.getMedicineManager().findById(item.getMedicineId());
+                    String name = med != null ? med.getName() : "未知药品";
+                    setText(name + " × " + item.getQuantity() + " = ¥" + String.format("%.2f", item.getTotalPrice()));
+                } else {
+                    setText(value == null ? "" : value.toString());
+                }
+                return this;
+            }
+        });
         rightPanel.add(new JScrollPane(cartList), BorderLayout.CENTER);
 
         // 底部：操作区
         JPanel bottomPanel = new JPanel(new FlowLayout());
 
-        // 客户选择
         customerComboBox = new JComboBox<>();
         customerComboBox.addItem("请选择客户");
 
-        // 自定义渲染器
         customerComboBox.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
@@ -85,7 +118,6 @@ public class SalePanel extends JPanel {
             }
         });
 
-        // 加载真实客户数据
         List<Customer> customers = dataManager.getCustomerManager().getAll();
         for (Customer customer : customers) {
             customerComboBox.addItem(customer);
@@ -102,8 +134,7 @@ public class SalePanel extends JPanel {
         bottomPanel.add(addToCartBtn);
         bottomPanel.add(checkoutBtn);
 
-        // 事件绑定
-        addToCartBtn.addActionListener(e -> addToCart(medicineList.getSelectedIndex()));
+        addToCartBtn.addActionListener(e -> addToCart(medicineList.getSelectedValue()));
         checkoutBtn.addActionListener(e -> checkout());
 
         add(leftPanel, BorderLayout.WEST);
@@ -115,12 +146,13 @@ public class SalePanel extends JPanel {
         medicineListModel.clear();
         List<Medicine> medicines = medicineManager.getAll();
         for (Medicine m : medicines) {
-            medicineListModel.addElement(m.getName() + " (" + m.getId() + ")");
+            medicineListModel.addElement(m);
         }
     }
 
-    private void addToCart(int selectedIndex) {
-        if (selectedIndex == -1) {
+    // 👇 直接传 Medicine 对象，避免解析字符串
+    private void addToCart(Medicine selectedMedicine) {
+        if (selectedMedicine == null) {
             MessageUtil.showError("错误", "请先选择药品");
             return;
         }
@@ -137,25 +169,14 @@ public class SalePanel extends JPanel {
             return;
         }
 
-        String displayText = medicineListModel.getElementAt(selectedIndex);
-        int start = displayText.lastIndexOf('(');
-        int end = displayText.lastIndexOf(')');
-        if (start == -1 || end == -1 || start >= end) {
-            MessageUtil.showError("错误", "药品格式异常");
-            return;
-        }
-        String id = displayText.substring(start + 1, end);
-
-        Medicine medicine = medicineManager.findById(id);
-        if (medicine == null) {
-            MessageUtil.showError("错误", "未找到该药品");
+        // 检查库存
+        if (quantity > selectedMedicine.getStock()) {
+            MessageUtil.showError("错误", "库存不足！当前库存：" + selectedMedicine.getStock());
             return;
         }
 
-        double unitPrice = medicine.getPrice();
-        SaleItem item = new SaleItem(id, quantity, unitPrice);
+        SaleItem item = new SaleItem(selectedMedicine.getId(), quantity, selectedMedicine.getPrice());
         cartModel.addElement(item);
-
         MessageUtil.showInfo("成功", "已加入购物车");
     }
 
@@ -172,7 +193,6 @@ public class SalePanel extends JPanel {
         }
 
         String customerId = ((Customer) selected).getPhone();
-
         List<SaleItem> cartItems = new ArrayList<>();
         for (int i = 0; i < cartModel.getSize(); i++) {
             cartItems.add(cartModel.getElementAt(i));
@@ -183,9 +203,11 @@ public class SalePanel extends JPanel {
             MessageUtil.showInfo("成功", "销售完成！订单号：" + record.getRecordId());
             cartModel.clear();
 
-            // 👇 通知药品面板刷新（库存可能已变）
+            // 👇 关键三连：刷新自身 + 主面板药品 + 主面板客户
+            updateMedicineList(); // ✅ 立即更新当前页面的库存显示！
             if (mainFrame != null) {
                 mainFrame.refreshMedicinePanel();
+                mainFrame.refreshCustomerPanel();
             }
 
         } catch (Exception e) {
@@ -193,11 +215,7 @@ public class SalePanel extends JPanel {
         }
     }
 
-    /**
-     * 刷新客户下拉框和药品列表（供 MainFrame 在切换 Tab 时调用）
-     */
     public void refreshData() {
-        // 重新加载客户列表
         customerComboBox.removeAllItems();
         customerComboBox.addItem("请选择客户");
         List<Customer> customers = dataManager.getCustomerManager().getAll();
@@ -205,7 +223,6 @@ public class SalePanel extends JPanel {
             customerComboBox.addItem(customer);
         }
 
-        // 重新加载药品列表
         updateMedicineList();
     }
 }

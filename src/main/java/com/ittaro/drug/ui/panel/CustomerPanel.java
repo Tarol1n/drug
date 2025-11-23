@@ -58,7 +58,7 @@ public class CustomerPanel extends JPanel {
         // 底部 formPanel 已移除
     }
 
-    private void refreshTable() {
+    public void refreshTable() {
         tableModel.setRowCount(0);
         List<Customer> customers = customerManager.getAll();
         for (Customer c : customers) {
