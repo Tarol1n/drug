@@ -19,8 +19,8 @@ import java.io.Serializable;
 public class Employee implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private String username;  // 用户名（登录用）
-    private String password;  // 密码（明文存储，仅用于演示）
+    private String username;  // 用户名
+    private String password;  // 密码
     private Role role;        // 角色：管理员 / 普通员工
 
     // 角色枚举
